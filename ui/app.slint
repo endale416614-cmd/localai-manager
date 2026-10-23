@@ -353,7 +353,9 @@ export component AppWindow inherits Window {
     preferred-height: 820px;
     min-width: 960px;
     min-height: 600px;
-    background: Theme.bg;
+    // Flipped by Rust after a restore: a background one step off repaints the whole window.
+    in property <bool> repaint-flip;
+    background: root.repaint-flip ? #0F1114 : Theme.bg;
     default-font-family: "Segoe UI Variable Text";
     default-font-size: 14px;
     forward-focus: keys;

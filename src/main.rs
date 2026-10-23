@@ -13,7 +13,7 @@ mod web;
 
 use config::Group;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -616,8 +616,18 @@ fn main() {
     let timer = slint::Timer::default();
     {
         let (r, ui_weak, web) = (redraw.clone(), ui.as_weak(), web.clone());
+        let was_minimized = Cell::new(false);
         timer.start(slint::TimerMode::Repeated, Duration::from_millis(200), move || {
             r();
+            if let Some(ui) = ui_weak.upgrade() {
+                // Slint keeps drawing while minimized (this timer changes values), which uses up its
+                // one full repaint; after the restore it presents only what changed since, and the
+                // rest of the window shows what is behind it. Repaint all of it once.
+                let minimized = ui.window().is_minimized();
+                if was_minimized.replace(minimized) && !minimized {
+                    ui.set_repaint_flip(!ui.get_repaint_flip());
+                }
+            }
             // Moving to a monitor with another scale keeps the logical size, so the width/height
             // handlers stay silent; the view's pixels still have to follow.
             if let (Some(ui), Some(v)) = (ui_weak.upgrade(), web.borrow().as_ref()) {
