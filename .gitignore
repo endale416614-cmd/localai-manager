@@ -1,0 +1,5 @@
+/target
+/installer/target
+/dist
+*.bak
+*.tmp

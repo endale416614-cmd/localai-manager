@@ -1,0 +1,29 @@
+[package]
+name = "localai-manager"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[dependencies]
+nvml-wrapper = "0.13.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+# Software renderer only: first paint ~100 ms vs ~330 ms with OpenGL (femtovg) on this machine.
+slint = { version = "1.18.1", default-features = false, features = ["std", "backend-winit", "renderer-software", "accessibility", "compat-1-2", "raw-window-handle-06"] }
+sysinfo = "0.39.6"
+toml = "1.1.8"
+ureq = { version = "3.4.2", default-features = false, features = ["json"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp", "Win32_Security", "Win32_System_Console", "Win32_Storage_FileSystem", "Win32_System_WindowsProgramming", "Win32_UI_WindowsAndMessaging"] }
+# WebView2 child window that shows Odysseus inside the manager.
+wry = { version = "0.57.1", default-features = false }
+
+[build-dependencies]
+slint-build = "1.18.1"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"
+

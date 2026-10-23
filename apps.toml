@@ -1,0 +1,130 @@
+# LocalAI Manager app list. Launch settings live in the .bat files; this file only says how to run and watch them.
+# group: "gpu" (only one at a time, 8 GB VRAM), "svc" (background service), "app" (desktop/terminal, launch only)
+# health: HTTP path that returns 200 when ready, or "tcp" for "port accepts connections".
+
+[[app]]
+id = "qwen36"
+name = "Qwen3.6"
+sub = "Qwen3.6 35B-A3B · UD-Q4_K_XL · chat"
+group = "gpu"
+chat = true
+cmd = ["cmd.exe", "/c", "C:\\LocalAI\\start-qwen36.bat"]
+cwd = "C:\\LocalAI"
+port = 8084
+health = "/health"
+url = "http://127.0.0.1:8084"
+note = "Thinks before it answers. Installed by LocalAI setup; flags live in start-qwen36.bat."
+
+[[app]]
+id = "coder"
+chat = true
+name = "Coder"
+sub = "Qwen3-Coder 30B-A3B · UD-Q4_K_XL"
+group = "gpu"
+cmd = ["cmd.exe", "/c", "C:\\LocalAI\\start-llm.bat"]
+cwd = "C:\\LocalAI"
+port = 8081
+health = "/health"
+url = "http://127.0.0.1:8081"
+stat = "17–22 tok/s"
+vram = "5.3 GB"
+ram = "16.8 GB"
+
+[[app]]
+id = "small"
+chat = true
+name = "Fallback"
+sub = "Qwen3.5 9B · Q4_K_M · fully on GPU"
+group = "gpu"
+cmd = ["cmd.exe", "/c", "C:\\LocalAI\\start-llm-small.bat"]
+cwd = "C:\\LocalAI"
+port = 8082
+health = "/health"
+url = "http://127.0.0.1:8082"
+stat = "61.6 tok/s"
+vram = "7.3 GB"
+
+[[app]]
+id = "novelist"
+chat = true
+name = "Novelist"
+sub = "Mag-Mell R1 Uncensored · IQ4_XS · 8K context"
+group = "gpu"
+cmd = ["cmd.exe", "/c", "C:\\LocalAI\\start-novel.bat"]
+cwd = "C:\\LocalAI"
+port = 8083
+health = "/health"
+url = "http://127.0.0.1:8083"
+stat = "16.7 tok/s"
+vram = "7.7 GB"
+note = "--fit decides how many layers stay on the GPU. Samplers follow the model card: temp 1.25, min-p 0.2."
+
+[[app]]
+id = "comfy"
+name = "ComfyUI"
+sub = "SDXL · FLUX.2 Klein 4B · Wan 2.2 I2V"
+group = "gpu"
+cmd = ["cmd.exe", "/c", "C:\\LocalAI\\start-comfyui.bat"]
+cwd = "C:\\LocalAI"
+port = 8188
+health = "/system_stats"
+url = "http://127.0.0.1:8188"
+stat = "Klein 6 s"
+vram = "7.4 GB"
+ram = "8.9 GB image · 23.6 GB video"
+note = "Wan 2.2 video peaked at 31.8 GB system RAM and 9.9 GB pagefile in testing. Stop other apps before rendering video."
+
+[[app]]
+id = "wiki"
+name = "Wikipedia"
+sub = "kiwix-serve · every ZIM in C:\\ZIM"
+group = "svc"
+cmd = ["cmd.exe", "/c", "C:\\LocalAI\\start-wiki.bat"]
+cwd = "C:\\LocalAI"
+port = 8080
+health = "/catalog/v2/entries"
+url = "http://127.0.0.1:8080"
+stat = "search 353 ms"
+
+[[app]]
+id = "ocserve"
+name = "OpenCode server"
+sub = "headless · opencode serve"
+group = "svc"
+cmd = ["C:\\LocalAI\\opencode\\opencode.exe", "serve", "--port", "4096", "--hostname", "127.0.0.1"]
+cwd = "C:\\LocalAI"
+port = 4096
+health = "tcp"
+stat = "Hello World 46 s"
+note = "Needs Coder on :8081. No password, so it stays bound to 127.0.0.1."
+
+[[app]]
+id = "odysseus"
+name = "Odysseus"
+sub = "AI workspace · chat, agents, research, docs"
+group = "svc"
+cmd = ["C:\\Odysseus\\venv\\Scripts\\python.exe", "-m", "uvicorn", "app:app", "--host", "127.0.0.1", "--port", "7000"]
+cwd = "C:\\Odysseus"
+port = 7000
+health = "/api/health"
+url = "http://127.0.0.1:7000"
+note = "Point it at a chat model (e.g. Qwen3.6 on :8084) in odysseus\\.env. Run setup.py once first to create the admin login."
+
+[[app]]
+id = "octui"
+name = "OpenCode"
+sub = "terminal coding agent"
+group = "app"
+cmd = ["wt.exe", "-d", "C:\\LocalAI", "C:\\LocalAI\\opencode\\opencode.exe"]
+stat = "Windows Terminal"
+note = "Opens in Windows Terminal. Start Coder first."
+
+[[app]]
+id = "kiwixd"
+name = "Kiwix Desktop"
+sub = "2.5.1 · portable · signed"
+group = "app"
+cmd = ["C:\\LocalAI\\kiwix-desktop\\kiwix-desktop.exe"]
+cwd = "C:\\LocalAI\\kiwix-desktop"
+stat = "offline library"
+ram = "146 MB"
