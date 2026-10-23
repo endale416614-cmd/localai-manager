@@ -51,8 +51,8 @@ pub fn run_in_console() -> bool {
     unsafe {
         windows_sys::Win32::System::Console::AllocConsole();
     }
-    use_own_console();
-    let dir = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)).unwrap_or_else(|| PathBuf::from("."));
+    let release_console = use_own_console();
+    let dir =std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)).unwrap_or_else(|| PathBuf::from("."));
     println!("LocalAI setup: installing into {}\n(move LocalAI.exe to another folder first to install there)\n", dir.display());
     let ok = match run(&dir) {
         Ok(()) => {
@@ -65,6 +65,7 @@ pub fn run_in_console() -> bool {
             false
         }
     };
+    release_console();
     unsafe {
         windows_sys::Win32::System::Console::FreeConsole();
     }
@@ -73,10 +74,13 @@ pub fn run_in_console() -> bool {
 
 /// Points stdin/stdout/stderr (and so curl's progress bar) at the new console. Handles inherited
 /// from a parent, such as LocalAI-Setup.exe, would otherwise get the output and leave it blank.
-fn use_own_console() {
-    use windows_sys::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE, INVALID_HANDLE_VALUE};
+/// Returns the undo: while those handles stay open, FreeConsole leaves the console window up.
+fn use_own_console() -> impl FnOnce() {
+    use windows_sys::Win32::Foundation::{CloseHandle, GENERIC_READ, GENERIC_WRITE, INVALID_HANDLE_VALUE};
     use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING};
-    use windows_sys::Win32::System::Console::{STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, SetStdHandle};
+    use windows_sys::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, SetStdHandle};
+    let ids = [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE];
+    let before = ids.map(|id| unsafe { GetStdHandle(id) });
     let open = |name: &str| {
         let w: Vec<u16> = name.encode_utf16().chain([0]).collect();
         unsafe { CreateFileW(w.as_ptr(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, std::ptr::null(), OPEN_EXISTING, 0, std::ptr::null_mut()) }
@@ -89,6 +93,16 @@ fn use_own_console() {
         }
         if inp != INVALID_HANDLE_VALUE {
             SetStdHandle(STD_INPUT_HANDLE, inp);
+        }
+    }
+    move || unsafe {
+        for (id, h) in ids.into_iter().zip(before) {
+            SetStdHandle(id, h);
+        }
+        for h in [out, inp] {
+            if h != INVALID_HANDLE_VALUE {
+                CloseHandle(h);
+            }
         }
     }
 }
