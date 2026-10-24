@@ -1,4 +1,4 @@
-import { ScrollView, LineEdit } from "std-widgets.slint";
+import { ScrollView, LineEdit, TextEdit } from "std-widgets.slint";
 
 // status: 0 stopped, 1 starting, 2 ready, 3 stopping, 4 failed, 5 launched
 export struct AppTile {
@@ -347,8 +347,265 @@ component ChatView inherits VerticalLayout {
     }
 }
 
+// mode: 0 image, 1 edit image, 2 video
+component CreateView inherits VerticalLayout {
+    in property <int> mode;
+    in property <string> picture;
+    in property <string> status-label;
+    in property <int> status;
+    in property <string> start-label;
+    in property <bool> busy;
+    in property <bool> has-result;
+    in property <image> result;
+    in property <string> video;
+    in-out property <string> prompt;
+    callback set-mode(int);
+    callback pick();
+    callback create(string);
+    callback cancel();
+    callback open-video();
+
+    property <bool> can-create: root.prompt != "" && (root.mode == 0 || root.picture != "");
+
+    spacing: 14px;
+
+    HorizontalLayout {
+        spacing: 4px;
+        alignment: start;
+        TabBtn { text: "Image"; active: root.mode == 0; clicked => { root.set-mode(0); } }
+        TabBtn { text: "Edit image"; active: root.mode == 1; clicked => { root.set-mode(1); } }
+        TabBtn { text: "Video"; active: root.mode == 2; clicked => { root.set-mode(2); } }
+    }
+
+    Text {
+        text: root.mode == 0 ? "Describe the picture you want."
+            : root.mode == 1 ? "Choose a picture, then say what to change."
+            : "Choose the first picture, then describe how it moves. The clip is about 3 seconds.";
+        color: Theme.muted;
+        wrap: word-wrap;
+    }
+
+    Rectangle {
+        height: 110px;
+        TextEdit {
+            width: parent.width;
+            height: parent.height;
+            font-size: 14px;
+            wrap: word-wrap;
+            text <=> root.prompt;
+            accessible-label: "Prompt";
+        }
+        // The edit's own placeholder is as bright as typed text, so the example is drawn here.
+        if root.prompt == "": Text {
+            x: 13px;
+            y: 12px;
+            width: parent.width - 26px;
+            text: root.mode == 0 ? "For example: A lighthouse on a cliff at sunset, oil painting"
+                : root.mode == 1 ? "For example: Make the sky stormy"
+                : "For example: Waves roll in and the camera slowly pushes forward";
+            font-size: 14px;
+            color: Theme.muted;
+            wrap: word-wrap;
+        }
+    }
+
+    if root.mode != 0: HorizontalLayout {
+        spacing: 12px;
+        Btn { text: "Choose picture…"; height: 36px; clicked => { root.pick(); } }
+        Text {
+            text: root.picture != "" ? root.picture : "No picture chosen";
+            color: root.picture != "" ? Theme.soft : Theme.muted;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+    }
+
+    HorizontalLayout {
+        alignment: start;
+        if root.busy: Btn { text: "Cancel"; kind: 2; clicked => { root.cancel(); } }
+        if !root.busy: Btn {
+            text: root.start-label;
+            kind: root.can-create ? 1 : 0;
+            clicked => {
+                if (root.can-create) {
+                    root.create(root.prompt);
+                }
+            }
+        }
+    }
+
+    Text { text: root.status-label; font-size: 13px; color: Theme.status-color(root.status); wrap: word-wrap; }
+
+    Rectangle {
+        vertical-stretch: 1;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: Theme.line;
+        background: Theme.panel;
+        VerticalLayout {
+            padding: 12px;
+            spacing: 10px;
+            if root.has-result: Image {
+                vertical-stretch: 1;
+                min-height: 0px;
+                preferred-height: 0px;
+                source: root.result;
+                image-fit: contain;
+            }
+            if !root.has-result: Text {
+                vertical-stretch: 1;
+                text: root.video != "" ? "The video is ready."
+                    : root.mode == 0 ? "Your picture appears here."
+                    : root.mode == 1 ? "The edited picture appears here."
+                    : "The first picture appears here, with a button to play the video.";
+                color: Theme.muted;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                wrap: word-wrap;
+            }
+            if root.video != "": HorizontalLayout {
+                spacing: 12px;
+                Btn { text: "Open video"; kind: 1; height: 36px; clicked => { root.open-video(); } }
+                Text { text: root.video; color: Theme.muted; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+            }
+        }
+    }
+}
+
+component ImportRow inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> types;
+    callback clicked();
+    spacing: 12px;
+    Btn { text: root.label; width: 150px; clicked => { root.clicked(); } }
+    Text { text: root.types; font-size: 12.5px; color: Theme.muted; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+}
+
+// Copies pictures, voice clips or videos into a training set; kind: 0 images, 1 voice, 2 video.
+component TrainPanel inherits Rectangle {
+    in property <bool> busy;
+    in property <string> status;
+    in property <int> status-code;
+    in property <string> folder;
+    in property <bool> voice;
+    in-out property <string> set-name;
+    callback import(int, string);
+    callback cancel();
+    callback open-folder();
+    callback open-voice();
+
+    width: 380px;
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: Theme.line;
+    background: Theme.panel;
+
+    sv := ScrollView {
+        x: 1px;
+        y: 1px;
+        width: parent.width - 2px;
+        height: parent.height - 2px;
+        VerticalLayout {
+            width: sv.visible-width;
+            padding: 20px;
+            spacing: 12px;
+            alignment: start;
+
+            Text { text: "TRAINING DATA"; font-size: 12px; font-weight: 600; letter-spacing: 1px; color: Theme.soft; }
+            Text { text: "Copy pictures, voice clips or videos into a set, to train on."; font-size: 13px; color: Theme.muted; wrap: word-wrap; }
+
+            Rectangle {
+                height: 38px;
+                LineEdit {
+                    width: parent.width;
+                    height: parent.height;
+                    font-size: 14px;
+                    text <=> root.set-name;
+                    accessible-label: "Set name";
+                }
+                // Drawn here for the same reason as the prompt's example.
+                if root.set-name == "": Text {
+                    x: 12px;
+                    width: parent.width - 24px;
+                    height: parent.height;
+                    text: "set name, default: the source folder's name";
+                    font-size: 14px;
+                    color: Theme.muted;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+
+            if !root.busy: VerticalLayout {
+                spacing: 8px;
+                ImportRow { label: "Import images"; types: "png, jpg, webp, bmp"; clicked => { root.import(0, root.set-name); } }
+                ImportRow { label: "Import voice"; types: "wav, mp3, flac, ogg, m4a"; clicked => { root.import(1, root.set-name); } }
+                ImportRow { label: "Import video"; types: "mp4, mov, m4v, mkv, webm, avi"; clicked => { root.import(2, root.set-name); } }
+            }
+            if root.busy: HorizontalLayout {
+                alignment: start;
+                Btn { text: "Cancel"; kind: 2; clicked => { root.cancel(); } }
+            }
+
+            if root.status != "": Text { text: root.status; font-size: 13px; color: Theme.status-color(root.status-code); wrap: word-wrap; }
+
+            if root.folder != "": VerticalLayout {
+                spacing: 8px;
+                Rectangle {
+                    border-radius: 8px;
+                    border-width: 1px;
+                    border-color: Theme.line;
+                    background: Theme.bg;
+                    VerticalLayout {
+                        padding: 10px;
+                        path-input := TextInput {
+                            text: root.folder;
+                            read-only: true;
+                            single-line: false;
+                            wrap: char-wrap;
+                            font-family: Theme.mono;
+                            font-size: 12px;
+                            color: Theme.soft;
+                            selection-background-color: #2F4A66;
+                            accessible-role: text;
+                            accessible-label: "Set folder";
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    Btn {
+                        text: "Copy path";
+                        height: 34px;
+                        clicked => {
+                            path-input.select-all();
+                            path-input.copy();
+                        }
+                    }
+                    Btn { text: "Open folder"; height: 34px; clicked => { root.open-folder(); } }
+                }
+            }
+
+            Rectangle { height: 1px; background: Theme.line; }
+            Text { text: "VOICE"; font-size: 12px; font-weight: 600; letter-spacing: 1px; color: Theme.soft; }
+            Text {
+                text: "One clear speaker, 1 to 10 minutes in total; long recordings are fine, the trainer cuts them. Paste the folder into the trainer's step 0 (audio slicer input).";
+                font-size: 13px;
+                color: Theme.muted;
+                wrap: word-wrap;
+            }
+            if root.voice: Btn { text: "Open voice trainer"; clicked => { root.open-voice(); } }
+            Text { text: "PICTURES AND VIDEO"; font-size: 12px; font-weight: 600; letter-spacing: 1px; color: Theme.soft; }
+            Text { text: "Saved for training later; nothing on this PC trains image or video models yet."; font-size: 13px; color: Theme.muted; wrap: word-wrap; }
+        }
+    }
+}
+
 export component AppWindow inherits Window {
     title: "LocalAI";
+    icon: @image-url("../assets/icon.png");
     preferred-width: 1280px;
     preferred-height: 820px;
     min-width: 960px;
@@ -380,12 +637,11 @@ export component AppWindow inherits Window {
     in property <string> primary-label;
     in property <int> primary-kind;
     in property <bool> can-open;
-    in property <string> open-label: "Open in browser";
     in property <bool> can-restart;
     in property <string> log-text;
     in property <string> log-source;
 
-    // Odysseus shown inside the window: Rust puts a WebView2 child window below the 48px web bar.
+    // An app's web page shown inside the window: Rust puts a WebView2 child window below the 48px web bar.
     in property <bool> web-open;
     in property <string> web-title;
     callback web-back();
@@ -403,7 +659,7 @@ export component AppWindow inherits Window {
     in property <[PaletteItem]> palette-items;
     in-out property <int> palette-index;
 
-    // 0 apps, 1 chat
+    // 0 apps, 1 chat, 2 create
     in-out property <int> tab: 0;
     in property <string> home;
     in property <[ChatRow]> chat-rows;
@@ -414,6 +670,24 @@ export component AppWindow inherits Window {
     in property <bool> chat-ready;
     in property <bool> chat-busy;
     in-out property <string> chat-input;
+
+    in property <int> create-mode;
+    in property <string> create-picture;
+    in property <string> create-label;
+    in property <bool> create-busy;
+    in property <int> create-status;
+    in property <string> create-status-label;
+    in property <bool> create-has-image;
+    in property <image> create-image;
+    in property <string> create-video;
+    in-out property <string> create-prompt;
+
+    in-out property <string> train-set;
+    in property <bool> train-busy;
+    in property <string> train-status;
+    in property <int> train-status-code;
+    in property <string> train-folder;
+    in property <bool> train-voice;
 
     callback select(int);
     callback primary();
@@ -427,6 +701,15 @@ export component AppWindow inherits Window {
     callback chat-stop();
     callback chat-clear();
     callback chat-start();
+    callback create-set-mode(int);
+    callback create-pick();
+    callback create-start(string);
+    callback create-cancel();
+    callback create-open-video();
+    callback train-import(int, string);
+    callback train-cancel();
+    callback train-open-folder();
+    callback train-open-voice();
 
     function open-palette() {
         root.palette-query = "";
@@ -450,6 +733,8 @@ export component AppWindow inherits Window {
                 }
             }
         }
+        // A binding matches the character a key makes, and on the Thai Kedmanee layout the K key makes "า".
+        KeyBinding { keys: @keys(Control + "า"); activated => { if (!root.web-open) { root.open-palette(); } } }
 
         capture-key-pressed(e) => {
             if (!root.palette-open) {
@@ -507,6 +792,7 @@ export component AppWindow inherits Window {
                         spacing: 4px;
                         VerticalLayout { alignment: center; TabBtn { text: "Apps"; active: root.tab == 0; clicked => { root.tab = 0; } } }
                         VerticalLayout { alignment: center; TabBtn { text: "Chat"; active: root.tab == 1; clicked => { root.tab = 1; } } }
+                        VerticalLayout { alignment: center; TabBtn { text: "Create"; active: root.tab == 2; clicked => { root.tab = 2; } } }
                     }
                     Rectangle {
                         height: 38px;
@@ -575,6 +861,42 @@ export component AppWindow inherits Window {
                 stop => { root.chat-stop(); }
                 clear => { root.chat-clear(); }
                 start-model => { root.chat-start(); }
+            }
+
+            if root.tab == 2: HorizontalLayout {
+                padding: 24px;
+                spacing: 24px;
+                vertical-stretch: 1;
+                CreateView {
+                    horizontal-stretch: 1;
+                    mode: root.create-mode;
+                    picture: root.create-picture;
+                    status-label: root.create-status-label;
+                    status: root.create-status;
+                    start-label: root.create-label;
+                    busy: root.create-busy;
+                    has-result: root.create-has-image;
+                    result: root.create-image;
+                    video: root.create-video;
+                    prompt <=> root.create-prompt;
+                    set-mode(i) => { root.create-set-mode(i); }
+                    pick => { root.create-pick(); }
+                    create(p) => { root.create-start(p); }
+                    cancel => { root.create-cancel(); }
+                    open-video => { root.create-open-video(); }
+                }
+                TrainPanel {
+                    busy: root.train-busy;
+                    status: root.train-status;
+                    status-code: root.train-status-code;
+                    folder: root.train-folder;
+                    voice: root.train-voice;
+                    set-name <=> root.train-set;
+                    import(kind, set) => { root.train-import(kind, set); }
+                    cancel => { root.train-cancel(); }
+                    open-folder => { root.train-open-folder(); }
+                    open-voice => { root.train-open-voice(); }
+                }
             }
 
             // Main
@@ -687,7 +1009,7 @@ export component AppWindow inherits Window {
                             spacing: 8px;
                             alignment: start;
                             Btn { text: root.primary-label; kind: root.primary-kind; clicked => { root.primary(); } }
-                            if root.can-open: Btn { text: root.open-label; clicked => { root.open-url(); } }
+                            if root.can-open: Btn { text: "Open"; clicked => { root.open-url(); } }
                             if root.can-restart: Btn { text: "Restart"; clicked => { root.restart(); } }
                         }
 

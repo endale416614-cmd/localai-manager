@@ -1,0 +1,18 @@
+{
+  "1": { "class_type": "UnetLoaderGGUF", "inputs": { "unet_name": "wan2.2_i2v_high_noise_14B_Q4_K_M.gguf" } },
+  "2": { "class_type": "UnetLoaderGGUF", "inputs": { "unet_name": "wan2.2_i2v_low_noise_14B_Q4_K_M.gguf" } },
+  "3": { "class_type": "LoraLoaderModelOnly", "inputs": { "model": ["1", 0], "lora_name": "Wan_2_2_I2V_A14B_HIGH_lightx2v_4step_lora_260412_rank_64_fp16.safetensors", "strength_model": 1.0 } },
+  "4": { "class_type": "LoraLoaderModelOnly", "inputs": { "model": ["2", 0], "lora_name": "Wan_2_2_I2V_A14B_LOW_lightx2v_4step_lora_260412_rank_64_fp16.safetensors", "strength_model": 1.0 } },
+  "5": { "class_type": "ModelSamplingSD3", "inputs": { "model": ["3", 0], "shift": 5.0 } },
+  "6": { "class_type": "ModelSamplingSD3", "inputs": { "model": ["4", 0], "shift": 5.0 } },
+  "7": { "class_type": "CLIPLoaderGGUF", "inputs": { "clip_name": "umt5-xxl-encoder-Q3_K_M.gguf", "type": "wan" } },
+  "8": { "class_type": "CLIPTextEncode", "inputs": { "clip": ["7", 0], "text": "{{prompt}}" } },
+  "9": { "class_type": "CLIPTextEncode", "inputs": { "clip": ["7", 0], "text": "static, blurry, low quality, worst quality, jpeg artifacts, deformed, extra fingers, watermark, subtitles" } },
+  "10": { "class_type": "VAELoader", "inputs": { "vae_name": "wan_2.1_vae.safetensors" } },
+  "11": { "class_type": "LoadImage", "inputs": { "image": "{{image}}" } },
+  "12": { "class_type": "WanImageToVideo", "inputs": { "positive": ["8", 0], "negative": ["9", 0], "vae": ["10", 0], "start_image": ["11", 0], "width": 832, "height": 480, "length": "{{frames}}", "batch_size": 1 } },
+  "13": { "class_type": "KSamplerAdvanced", "inputs": { "model": ["5", 0], "positive": ["12", 0], "negative": ["12", 1], "latent_image": ["12", 2], "add_noise": "enable", "noise_seed": "{{seed}}", "steps": 4, "cfg": 1.0, "sampler_name": "euler", "scheduler": "simple", "start_at_step": 0, "end_at_step": 2, "return_with_leftover_noise": "enable" } },
+  "14": { "class_type": "KSamplerAdvanced", "inputs": { "model": ["6", 0], "positive": ["12", 0], "negative": ["12", 1], "latent_image": ["13", 0], "add_noise": "disable", "noise_seed": 0, "steps": 4, "cfg": 1.0, "sampler_name": "euler", "scheduler": "simple", "start_at_step": 2, "end_at_step": 10000, "return_with_leftover_noise": "disable" } },
+  "15": { "class_type": "VAEDecode", "inputs": { "samples": ["14", 0], "vae": ["10", 0] } },
+  "16": { "class_type": "VHS_VideoCombine", "inputs": { "images": ["15", 0], "frame_rate": 16.0, "loop_count": 0, "filename_prefix": "{{prefix}}", "format": "video/h264-mp4", "pix_fmt": "yuv420p", "crf": 19, "save_metadata": false, "trim_to_audio": false, "pingpong": false, "save_output": true } }
+}

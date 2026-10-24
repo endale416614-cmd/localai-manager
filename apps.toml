@@ -75,6 +75,18 @@ ram = "8.9 GB image · 23.6 GB video"
 note = "Wan 2.2 video peaked at 31.8 GB system RAM and 9.9 GB pagefile in testing. Stop other apps before rendering video."
 
 [[app]]
+id = "voice"
+name = "Voice trainer"
+sub = "GPT-SoVITS v2Pro · clone a voice from a few minutes of clips"
+group = "gpu"
+cmd = ["cmd.exe", "/c", "C:\\LocalAI\\start-voice.bat"]
+cwd = "C:\\LocalAI"
+port = 9874
+health = "tcp"
+url = "http://127.0.0.1:9874"
+note = "Put voice clips in with Import voice on the Create tab, then paste the set's folder into step 0 here. Proofreading and voice tests open in your browser."
+
+[[app]]
 id = "wiki"
 name = "Wikipedia"
 sub = "kiwix-serve · every ZIM in C:\\ZIM"

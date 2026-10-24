@@ -54,6 +54,11 @@ pub fn locate() -> PathBuf {
     }
 }
 
+/// `name` in the exe's folder (an absolute path); relative to the current directory if the exe's folder is unknown.
+pub fn beside_exe(name: &str) -> PathBuf {
+    std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join(name))).unwrap_or_else(|| PathBuf::from(name))
+}
+
 pub fn load(path: &Path) -> Result<Vec<AppDef>, String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
     parse(&text).map_err(|e| format!("{}: {e}", path.display()))
@@ -122,9 +127,13 @@ mod tests {
     #[test]
     fn shipped_apps_toml_parses() {
         let apps = parse(include_str!("../apps.toml")).unwrap();
-        assert_eq!(apps.len(), 10);
-        assert_eq!(apps.iter().filter(|a| a.group == Group::Gpu).count(), 5);
+        assert_eq!(apps.len(), 11);
+        assert_eq!(apps.iter().filter(|a| a.group == Group::Gpu).count(), 6);
         assert_eq!(apps.iter().find(|a| a.chat).map(|a| a.id.as_str()), Some("qwen36"));
+        // The Create tab looks for these two by id: the ComfyUI app and the voice trainer.
+        for id in [crate::create::ID, crate::train::VOICE_ID] {
+            assert!(apps.iter().any(|a| a.id == id && a.url.is_some() && a.port.is_some()), "{id}");
+        }
     }
 
     #[test]

@@ -105,7 +105,7 @@ enum Event {
 
 /// Calls `on` per streamed event until [DONE]; stops early when `on` returns false.
 fn stream(port: u16, history: &[Value], mut on: impl FnMut(Event) -> bool) -> Result<(), String> {
-    let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).build().into();
+    let agent = crate::net::local_agent(None);
     let url = format!("http://127.0.0.1:{port}/v1/chat/completions");
     let mut resp = agent.post(&url).send_json(json!({ "messages": history, "stream": true })).map_err(|e| e.to_string())?;
     if resp.status() != 200 {

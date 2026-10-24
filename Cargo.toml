@@ -14,8 +14,8 @@ slint = { version = "1.18.1", default-features = false, features = ["std", "back
 sysinfo = "0.39.6"
 toml = "1.1.8"
 ureq = { version = "3.4.2", default-features = false, features = ["json"] }
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp", "Win32_Security", "Win32_System_Console", "Win32_Storage_FileSystem", "Win32_System_WindowsProgramming", "Win32_UI_WindowsAndMessaging"] }
-# WebView2 child window that shows Odysseus inside the manager.
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp", "Win32_Security", "Win32_System_Console", "Win32_Storage_FileSystem", "Win32_System_WindowsProgramming", "Win32_UI_WindowsAndMessaging", "Win32_UI_Controls_Dialogs", "Win32_System_SystemInformation"] }
+# WebView2 child windows that show the apps' web pages inside the manager.
 wry = { version = "0.57.1", default-features = false }
 
 [build-dependencies]
