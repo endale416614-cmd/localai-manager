@@ -10,12 +10,16 @@ A small Rust + Slint launcher for a local AI stack on Windows 10 and 11 (llama.c
 
 ## One-click install
 
-Build `LocalAI-Setup.exe` (see [Build](#build)) and double-click it. It needs no answers:
+Download `LocalAI-Setup.exe` from the [latest release](https://github.com/endale416614-cmd/localai-manager/releases/latest) and double-click it. Nothing has to be built or installed first (to build it yourself, see [Build](#build)). It needs no answers:
 
 1. It picks the folder: `--dir <folder>` if given, else the folder the desktop `LocalAI.lnk` points into when that shortcut starts a `localai*.exe` with `apps.toml` beside it (an update keeps `apps.toml` and the models), else `LocalAI` on the fixed drive with the most free space.
 2. It writes the manager exe there, first as `<name>.new` and only then in place of the old one, so a failed write leaves the old version working. On an update the previous exe is kept as `<name>.old`; if the old version is still running, it says so and you restart LocalAI yourself.
 3. It puts a LocalAI shortcut on the desktop and in the Start menu, and warns if the WebView2 Runtime is missing. With a warning, or with the old version still running, the window waits for Enter.
 4. It starts the manager.
+
+The exe is not code-signed, so Windows may stop it the first time: on "Windows protected your PC" (SmartScreen), click **More info**, then **Run anyway**. Smart App Control, which some fresh Windows 11 installs turn on, blocks unsigned apps and offers no such button.
+
+The `apps.toml` in this repository is the author's own list, with its apps under `C:\LocalAI`, kept as an example of every setting. An install does not use it: a new install writes its own.
 
 On a new install the manager has no `apps.toml` yet, so it opens a console and:
 
@@ -118,6 +122,8 @@ cargo build --release --manifest-path installer/Cargo.toml
 ```
 
 Then copy `installer\target\release\localai-setup.exe` to `dist\LocalAI-Setup.exe`.
+
+For an exe to publish, run `powershell -NoProfile -ExecutionPolicy Bypass -File release.ps1` instead. It does both builds with the cargo home (in your user folder) and the repository's folder remapped out of the exes, since panic messages carry source paths. It stops if your user folder, user name, computer name or either folder is still in them, and otherwise copies the installer to `dist\LocalAI-Setup.exe`.
 
 The icon of both exes is `assets\app.res`, linked in by each `build.rs` (link.exe takes it as it is, so building needs no resource compiler; a `-gnu` toolchain's linker cannot read a `.res`, so there the build skips it and the exes have no file icon). It is `assets\app.rc`, which points at `icon.ico`, compiled with the Windows SDK's `rc.exe /fo assets\app.res assets\app.rc`; do that again after changing the icon. The window and taskbar icon is `assets\icon.png`, built into the manager by Slint.
 

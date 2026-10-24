@@ -1,3 +1,6 @@
+# Example: the author's own list, with its apps under C:\LocalAI. An install does not use this file: the first
+# start writes an apps.toml beside the exe with the apps it installs or finds (see README, "One-click install").
+#
 # LocalAI Manager app list. Launch settings live in the .bat files; this file only says how to run and watch them.
 # group: "gpu" (only one at a time, 8 GB VRAM), "svc" (background service), "app" (desktop/terminal, launch only)
 # health: HTTP path that returns 200 when ready, or "tcp" for "port accepts connections".
