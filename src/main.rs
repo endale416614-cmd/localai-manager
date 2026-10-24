@@ -410,6 +410,7 @@ fn refresh(ui: &AppWindow, shared: &Shared, chat: &chat::Shared, st: &mut UiStat
         ui.set_sel_sub(s.def.sub.as_str().into());
         ui.set_sel_status(status_code(s));
         ui.set_sel_status_label(status_label(s, gpu_busy && !on).into());
+        // Exactly four: the detail panel shows them as fixed rows FactRow [0]..[3] (ui/app.slint).
         sync(
             &m.facts,
             vec![

@@ -111,6 +111,7 @@ component Btn inherits Rectangle {
         height: parent.height;
         horizontal-alignment: center;
         vertical-alignment: center;
+        overflow: elide;
         font-weight: (kind == 1 || kind == 2) ? 600 : 500;
         color: kind == 1 ? #06130C : kind == 2 ? #1A1300 : kind == 3 ? #E3D3B4 : Theme.text;
     }
@@ -121,13 +122,18 @@ component Meter inherits VerticalLayout {
     in property <string> value;
     in property <float> frac;
     in property <bool> hot;
-    width: 200px;
+    // Gives up to 40px only after the search box has shrunk to its minimum, at the narrowest windows.
+    min-width: 160px;
+    preferred-width: 200px;
+    max-width: 200px;
+    horizontal-stretch: 0;
     spacing: 6px;
     alignment: center;
     HorizontalLayout {
+        spacing: 8px;
         Text { text: root.label; font-size: 12px; color: Theme.muted; }
-        Rectangle { }
-        Text { text: root.value; font-size: 12px; font-family: Theme.mono; color: Theme.text; }
+        // Elides: with swap in use the value ("30.8 / 32 GB +3 swap") is wider than the meter.
+        Text { text: root.value; font-size: 12px; font-family: Theme.mono; color: Theme.text; horizontal-stretch: 1; horizontal-alignment: right; overflow: elide; }
     }
     Rectangle {
         height: 6px;
@@ -173,7 +179,7 @@ component Tile inherits Rectangle {
             Text { text: root.data.name; font-size: 15px; font-weight: 600; color: Theme.text; horizontal-stretch: 1; overflow: elide; }
             Text { text: root.data.port-label; font-size: 12px; font-family: Theme.mono; color: Theme.muted; vertical-alignment: center; }
         }
-        Text { text: root.data.sub; font-size: 12.5px; color: Theme.muted; wrap: word-wrap; }
+        Text { text: root.data.sub; font-size: 12.5px; color: Theme.muted; wrap: word-wrap; max-lines: 2; overflow: elide; }
         Rectangle { vertical-stretch: 1; }
         HorizontalLayout {
             spacing: 8px;
@@ -181,6 +187,13 @@ component Tile inherits Rectangle {
             Text { text: root.data.stat; font-size: 12px; font-family: Theme.mono; color: Theme.soft; }
         }
     }
+}
+
+component FactRow inherits HorizontalLayout {
+    in property <Fact> fact;
+    spacing: 12px;
+    Text { text: root.fact.k; width: 130px; font-size: 12px; color: Theme.muted; }
+    Text { text: root.fact.v; font-size: 13px; font-family: Theme.mono; color: Theme.text; wrap: word-wrap; horizontal-stretch: 1; }
 }
 
 component Section inherits VerticalLayout {
@@ -264,7 +277,7 @@ component ChatView inherits VerticalLayout {
     HorizontalLayout {
         spacing: 12px;
         VerticalLayout { alignment: center; StatusDot { status: root.status; } }
-        Text { text: root.model; font-size: 16px; font-weight: 600; color: Theme.text; vertical-alignment: center; }
+        Text { text: root.model; font-size: 16px; font-weight: 600; color: Theme.text; vertical-alignment: center; overflow: elide; }
         Text { text: root.status-label; font-size: 13px; color: Theme.status-color(root.status); vertical-alignment: center; }
         Rectangle { horizontal-stretch: 1; }
         if root.start-label != "": Btn { text: root.start-label; kind: 1; height: 34px; clicked => { root.start-model(); } }
@@ -796,7 +809,7 @@ export component AppWindow inherits Window {
                     }
                     Rectangle {
                         height: 38px;
-                        min-width: 240px;
+                        min-width: 150px;
                         max-width: 420px;
                         horizontal-stretch: 1;
                         border-radius: 8px;
@@ -827,7 +840,7 @@ export component AppWindow inherits Window {
                                     commands: "M18 11a7 7 0 1 1-14 0a7 7 0 1 1 14 0z M20 20l-3.5-3.5";
                                 }
                             }
-                            Text { text: "Search apps and actions"; color: Theme.muted; vertical-alignment: center; horizontal-stretch: 1; }
+                            Text { text: "Search apps and actions"; color: Theme.muted; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
                             VerticalLayout { alignment: center; Kbd { text: "Ctrl K"; } }
                         }
                     }
@@ -938,116 +951,134 @@ export component AppWindow inherits Window {
                     border-width: 1px;
                     border-color: Theme.line;
                     background: Theme.panel;
-                    VerticalLayout {
-                        padding: 20px;
-                        spacing: 16px;
+                    // Scrolls when a long launch line, the GPU banner and a note need more room than the window gives.
+                    sv-detail := ScrollView {
+                        x: 1px;
+                        y: 1px;
+                        width: parent.width - 2px;
+                        height: parent.height - 2px;
+                        // Not Slint's defaults, which use the layout's measured size: that counts wrapped text inside an `if` as one
+                        // line (the log end became unreachable) and centres a layout wider than the panel (everything slid sideways).
+                        // floor() keeps rounding from adding a scrollbar when the content fits.
+                        content-width: self.visible-width;
+                        content-height: max(self.visible-height, floor((log-block.y + log-block.height + 20px) / 1px) * 1px);
                         VerticalLayout {
-                            spacing: 6px;
-                            HorizontalLayout {
-                                spacing: 12px;
-                                alignment: start;
-                                Text { text: root.sel-name; font-size: 22px; font-weight: 600; color: Theme.text; }
-                                VerticalLayout {
-                                    alignment: center;
-                                    Rectangle {
-                                        height: 24px;
-                                        border-radius: 12px;
-                                        background: #1F2328;
-                                        HorizontalLayout {
-                                            padding-left: 10px;
-                                            padding-right: 10px;
-                                            spacing: 6px;
-                                            VerticalLayout { alignment: center; StatusDot { status: root.sel-status; } }
-                                            Text { text: root.sel-status-label; font-size: 12px; color: Theme.status-color(root.sel-status); vertical-alignment: center; }
+                            x: 0px;
+                            y: 0px;
+                            width: sv-detail.visible-width;
+                            // Content taller than the panel runs on below this; content-height makes that part reachable.
+                            height: sv-detail.visible-height;
+                            padding: 20px;
+                            spacing: 16px;
+                            VerticalLayout {
+                                spacing: 6px;
+                                HorizontalLayout {
+                                    spacing: 12px;
+                                    alignment: start;
+                                    Text { text: root.sel-name; font-size: 22px; font-weight: 600; color: Theme.text; overflow: elide; }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Rectangle {
+                                            height: 24px;
+                                            border-radius: 12px;
+                                            background: #1F2328;
+                                            HorizontalLayout {
+                                                padding-left: 10px;
+                                                padding-right: 10px;
+                                                spacing: 6px;
+                                                VerticalLayout { alignment: center; StatusDot { status: root.sel-status; } }
+                                                Text { text: root.sel-status-label; font-size: 12px; color: Theme.status-color(root.sel-status); vertical-alignment: center; }
+                                            }
                                         }
                                     }
                                 }
+                                Text { text: root.sel-sub; font-size: 13px; color: Theme.muted; wrap: word-wrap; }
                             }
-                            Text { text: root.sel-sub; font-size: 13px; color: Theme.muted; wrap: word-wrap; }
-                        }
 
-                        if root.pending: Rectangle {
-                            border-radius: 10px;
-                            border-width: 1px;
-                            border-color: #6B5320;
-                            background: #241D10;
-                            VerticalLayout {
-                                padding: 14px;
-                                spacing: 12px;
-                                Text { text: "The GPU is busy"; font-weight: 600; color: #FFD58A; }
-                                Text { text: root.pending-text; font-size: 13px; color: #E3D3B4; wrap: word-wrap; }
-                                HorizontalLayout {
-                                    spacing: 8px;
-                                    alignment: start;
-                                    Btn { text: root.pending-cta; kind: 2; clicked => { root.confirm-switch(); } }
-                                    Btn { text: "Cancel"; kind: 3; clicked => { root.cancel-switch(); } }
-                                }
-                            }
-                        }
-
-                        VerticalLayout {
-                            spacing: 8px;
-                            for f in root.sel-facts: HorizontalLayout {
-                                spacing: 12px;
-                                Text { text: f.k; width: 130px; font-size: 12px; color: Theme.muted; }
-                                Text { text: f.v; font-size: 13px; font-family: Theme.mono; color: Theme.text; wrap: word-wrap; horizontal-stretch: 1; }
-                            }
-                        }
-
-                        if root.sel-note != "": Rectangle {
-                            border-radius: 10px;
-                            border-width: 1px;
-                            border-color: root.sel-note-error ? #5C2A26 : #24405C;
-                            background: root.sel-note-error ? #2B1414 : #142130;
-                            VerticalLayout {
-                                padding: 12px;
-                                Text { text: root.sel-note; font-size: 13px; color: root.sel-note-error ? #FFB4AA : #C7DDF2; wrap: word-wrap; }
-                            }
-                        }
-
-                        HorizontalLayout {
-                            spacing: 8px;
-                            alignment: start;
-                            Btn { text: root.primary-label; kind: root.primary-kind; clicked => { root.primary(); } }
-                            if root.can-open: Btn { text: "Open"; clicked => { root.open-url(); } }
-                            if root.can-restart: Btn { text: "Restart"; clicked => { root.restart(); } }
-                        }
-
-                        VerticalLayout {
-                            spacing: 8px;
-                            vertical-stretch: 1;
-                            HorizontalLayout {
-                                Text { text: "LOG"; font-size: 12px; font-weight: 600; letter-spacing: 1px; color: Theme.soft; }
-                                Rectangle { }
-                                Text { text: root.log-source; font-size: 11px; font-family: Theme.mono; color: Theme.muted; }
-                            }
-                            Rectangle {
-                                // small minimum so the switch banner + note never push it past the panel
-                                min-height: 72px;
-                                vertical-stretch: 1;
-                                border-radius: 8px;
+                            if root.pending: Rectangle {
+                                border-radius: 10px;
                                 border-width: 1px;
-                                border-color: Theme.line;
-                                background: Theme.bg;
-                                property <length> content-h: sv-log.content-height;
-                                changed content-h => {
-                                    sv-log.content-y = min(0px, sv-log.visible-height - sv-log.content-height);
-                                }
-                                sv-log := ScrollView {
-                                    x: 1px;
-                                    y: 1px;
-                                    width: parent.width - 2px;
-                                    height: parent.height - 2px;
+                                border-color: #6B5320;
+                                background: #241D10;
+                                VerticalLayout {
+                                    padding: 14px;
+                                    spacing: 12px;
+                                    Text { text: "The GPU is busy"; font-weight: 600; color: #FFD58A; }
+                                    Text { text: root.pending-text; font-size: 13px; color: #E3D3B4; wrap: word-wrap; }
+                                    // Stacked: "Stop <app>, start <app>" with two long names does not fit beside Cancel.
                                     VerticalLayout {
-                                        width: sv-log.visible-width;
-                                        padding: 12px;
-                                        Text {
-                                            text: root.log-text;
-                                            wrap: word-wrap;
-                                            font-family: Theme.mono;
-                                            font-size: 12px;
-                                            color: Theme.soft;
-                                            accessible-role: text;
+                                        spacing: 8px;
+                                        Btn { text: root.pending-cta; kind: 2; min-width: 0px; clicked => { root.confirm-switch(); } }
+                                        Btn { text: "Cancel"; kind: 3; clicked => { root.cancel-switch(); } }
+                                    }
+                                }
+                            }
+
+                            // Fixed rows (main.rs always sends these four), not a `for`: the panel sized a repeated row as if its text did not wrap,
+                            // so a long Launch line kept one line of room and ran over the note and the buttons.
+                            if root.sel-facts.length > 0: VerticalLayout {
+                                spacing: 8px;
+                                FactRow { fact: root.sel-facts[0]; }
+                                FactRow { fact: root.sel-facts[1]; }
+                                FactRow { fact: root.sel-facts[2]; }
+                                FactRow { fact: root.sel-facts[3]; }
+                            }
+
+                            if root.sel-note != "": Rectangle {
+                                border-radius: 10px;
+                                border-width: 1px;
+                                border-color: root.sel-note-error ? #5C2A26 : #24405C;
+                                background: root.sel-note-error ? #2B1414 : #142130;
+                                VerticalLayout {
+                                    padding: 12px;
+                                    Text { text: root.sel-note; font-size: 13px; color: root.sel-note-error ? #FFB4AA : #C7DDF2; wrap: word-wrap; }
+                                }
+                            }
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+                                Btn { text: root.primary-label; kind: root.primary-kind; clicked => { root.primary(); } }
+                                if root.can-open: Btn { text: "Open"; clicked => { root.open-url(); } }
+                                if root.can-restart: Btn { text: "Restart"; clicked => { root.restart(); } }
+                            }
+
+                            log-block := VerticalLayout {
+                                spacing: 8px;
+                                vertical-stretch: 1;
+                                HorizontalLayout {
+                                    spacing: 12px;
+                                    Text { text: "LOG"; font-size: 12px; font-weight: 600; letter-spacing: 1px; color: Theme.soft; }
+                                    Text { text: root.log-source; font-size: 11px; font-family: Theme.mono; color: Theme.muted; horizontal-stretch: 1; horizontal-alignment: right; overflow: elide; }
+                                }
+                                Rectangle {
+                                    // small minimum so the switch banner + note never push it past the panel
+                                    min-height: 72px;
+                                    vertical-stretch: 1;
+                                    border-radius: 8px;
+                                    border-width: 1px;
+                                    border-color: Theme.line;
+                                    background: Theme.bg;
+                                    property <length> content-h: sv-log.content-height;
+                                    changed content-h => {
+                                        sv-log.content-y = min(0px, sv-log.visible-height - sv-log.content-height);
+                                    }
+                                    sv-log := ScrollView {
+                                        x: 1px;
+                                        y: 1px;
+                                        width: parent.width - 2px;
+                                        height: parent.height - 2px;
+                                        VerticalLayout {
+                                            width: sv-log.visible-width;
+                                            padding: 12px;
+                                            Text {
+                                                text: root.log-text;
+                                                wrap: word-wrap;
+                                                font-family: Theme.mono;
+                                                font-size: 12px;
+                                                color: Theme.soft;
+                                                accessible-role: text;
+                                            }
                                         }
                                     }
                                 }
@@ -1066,9 +1097,10 @@ export component AppWindow inherits Window {
                     padding-right: 24px;
                     padding-top: 10px;
                     padding-bottom: 10px;
-                    Text { text: "Bound to 127.0.0.1 only · quitting the manager stops every app it started"; font-size: 12px; color: Theme.muted; }
-                    Rectangle { }
-                    Text { text: root.home + " · " + root.running-count + " running"; font-size: 12px; font-family: Theme.mono; color: Theme.muted; }
+                    spacing: 16px;
+                    // Both elide, this one first, so a long install folder never runs into it.
+                    Text { text: "Bound to 127.0.0.1 only · quitting the manager stops every app it started"; font-size: 12px; color: Theme.muted; horizontal-stretch: 1; overflow: elide; }
+                    Text { text: root.home + " · " + root.running-count + " running"; font-size: 12px; font-family: Theme.mono; color: Theme.muted; horizontal-stretch: 0; overflow: elide; }
                 }
             }
         }
@@ -1176,14 +1208,16 @@ export component AppWindow inherits Window {
                                 padding-right: 12px;
                                 spacing: 12px;
                                 VerticalLayout { alignment: center; StatusDot { status: it.status; } }
-                                Text { text: it.title; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
-                                Text { text: it.detail; font-size: 12px; color: Theme.muted; vertical-alignment: center; }
+                                // The detail takes the spare room and shrinks first, so a long launch line elides before the title does.
+                                Text { text: it.title; color: Theme.text; vertical-alignment: center; horizontal-stretch: 0; overflow: elide; }
+                                Text { text: it.detail; font-size: 12px; color: Theme.muted; vertical-alignment: center; horizontal-stretch: 1; horizontal-alignment: right; overflow: elide; }
                                 if i == root.palette-index: VerticalLayout { alignment: center; Kbd { text: "Enter"; } }
                             }
                         }
                         if root.palette-items.length == 0: Text {
                             text: "No app or action matches \"" + root.palette-query + "\".";
                             color: Theme.muted;
+                            overflow: elide;
                             height: 44px;
                             vertical-alignment: center;
                         }
@@ -1223,7 +1257,7 @@ export component AppWindow inherits Window {
                     padding-bottom: 7px;
                     spacing: 12px;
                     Btn { text: "← Back to LocalAI"; height: 34px; clicked => { root.web-back(); } }
-                    Text { text: root.web-title; font-size: 15px; font-weight: 600; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
+                    Text { text: root.web-title; font-size: 15px; font-weight: 600; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
                     Btn { text: "Reload"; height: 34px; clicked => { root.web-reload(); } }
                 }
                 Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
