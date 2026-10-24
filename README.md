@@ -131,6 +131,7 @@ The icon of both exes is `assets\app.res`, linked in by each `build.rs` (link.ex
 
 - config validation;
 - the GPU guard;
+- the `needs_chat` decision: the chat app is started only for an app that is on, when no chat app is on and no other GPU app is on or stopping; a chat port that answers already and a failed start are logged;
 - the HTTP status parser;
 - the chat stream parser and Stop;
 - the setup's apps.toml merge and SHA-256;
@@ -152,7 +153,7 @@ Three more tests need a running ComfyUI on port 8188 (or `LOCALAI_COMFY_PORT`) a
 
 ## How it works
 
-- **`apps.toml`** lists each app: command, port, health check, and group (`gpu` / `svc` / `app`). Launch flags stay in the `.bat` files.
+- **`apps.toml`** lists each app: command, port, health check, and group (`gpu` / `svc` / `app`). Launch flags stay in the `.bat` files. `needs_chat = "<id>"` on a gpu or svc app starts that chat app along with it when no chat app is running (the example sets it on Odysseus). It never stops another app: when another GPU app is on or still stopping, or the chat port answers already, the chat app is skipped (not queued) and the app's log says why. Stopping the app leaves the chat app running.
 - **`job.rs`**: each gpu/svc app runs inside its own Windows job object with kill-on-close.
   - The app is spawned suspended, assigned to the job, then resumed, so no child process can escape the job.
   - Stop or Quit kills the whole process tree.

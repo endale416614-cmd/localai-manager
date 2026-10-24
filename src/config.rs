@@ -34,6 +34,8 @@ pub struct AppDef {
     /// Serves the OpenAI-compatible /v1/chat/completions API, so the Chat tab can talk to it.
     #[serde(default)]
     pub chat: bool,
+    /// Id of a chat app to start along with this one when no chat app is running.
+    pub needs_chat: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -117,6 +119,20 @@ pub fn parse(text: &str) -> Result<Vec<AppDef>, String> {
             }
         }
     }
+    for a in &file.apps {
+        let Some(c) = &a.needs_chat else { continue };
+        if a.chat || a.group == Group::App {
+            return Err(format!("app \"{}\": needs_chat works only on a gpu or svc app that is not a chat app", a.id));
+        }
+        // A target missing from the file is allowed: commenting an entry out hides it, and start logs the miss.
+        let Some(t) = file.apps.iter().find(|b| b.id == *c) else { continue };
+        if !t.chat || t.group == Group::App || (a.group == Group::Gpu && t.group == Group::Gpu) {
+            return Err(format!(
+                "app \"{}\": needs_chat \"{c}\" must be a gpu or svc chat app (svc for a gpu app: one GPU app at a time)",
+                a.id
+            ));
+        }
+    }
     Ok(file.apps)
 }
 
@@ -130,6 +146,8 @@ mod tests {
         assert_eq!(apps.len(), 11);
         assert_eq!(apps.iter().filter(|a| a.group == Group::Gpu).count(), 6);
         assert_eq!(apps.iter().find(|a| a.chat).map(|a| a.id.as_str()), Some("qwen36"));
+        let odysseus = apps.iter().find(|a| a.id == crate::odysseus::ID).unwrap();
+        assert_eq!(odysseus.needs_chat.as_deref(), Some("qwen36"));
         // The Create tab looks for these two by id: the ComfyUI app and the voice trainer.
         for id in [crate::create::ID, crate::train::VOICE_ID] {
             assert!(apps.iter().any(|a| a.id == id && a.url.is_some() && a.port.is_some()), "{id}");
@@ -145,6 +163,29 @@ mod tests {
         assert!(parse(&base.replace("'/h'", "'h'")).is_err());
         assert!(parse(&format!("{base}url='http://example.com'\n")).is_err());
         assert!(parse(&format!("{base}typo=1\n")).is_err());
+    }
+
+    #[test]
+    fn needs_chat_rules() {
+        let app = |id: &str, group: &str, extra: &str| {
+            format!("[[app]]\nid='{id}'\nname='N'\ngroup='{group}'\ncmd=['x']\nport=1\nhealth='/h'\n{extra}")
+        };
+        let gpu_chat = app("c", "gpu", "chat=true\n");
+        // The target may come before or after the app that needs it, or be missing (commented out).
+        assert!(parse(&format!("{}{gpu_chat}", app("a", "svc", "needs_chat='c'\n"))).is_ok());
+        assert!(parse(&format!("{gpu_chat}{}", app("a", "svc", "needs_chat='c'\n"))).is_ok());
+        assert!(parse(&app("a", "svc", "needs_chat='gone'\n")).is_ok());
+        assert!(parse(&format!("{}{}", app("a", "gpu", "needs_chat='s'\n"), app("s", "svc", "chat=true\n"))).is_ok());
+        let bad = [
+            format!("{}{}", app("a", "svc", "needs_chat='n'\n"), app("n", "gpu", "")), // not a chat app
+            format!("{}{gpu_chat}", app("a", "gpu", "needs_chat='c'\n")),             // two GPU apps at once
+            format!("{}{gpu_chat}", app("a", "app", "needs_chat='c'\n")),             // a launch-only app is never on
+            format!("{}{}", app("a", "svc", "needs_chat='l'\n"), app("l", "app", "chat=true\n")), // nor its target
+            app("c", "gpu", "chat=true\nneeds_chat='c'\n"),                           // a chat app, here itself
+        ];
+        for t in &bad {
+            assert!(parse(t).unwrap_err().contains("needs_chat"), "{t}");
+        }
     }
 
     #[test]

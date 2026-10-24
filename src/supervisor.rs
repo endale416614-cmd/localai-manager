@@ -88,7 +88,63 @@ fn command(def: &AppDef) -> Command {
     c
 }
 
+/// Starts app `i`, and with it the chat app its `needs_chat` names when no chat app is running. What happened to
+/// the chat app goes to the log of app `i`. Called on the UI thread only, so no other start runs in between.
+// shortcut: needed_chat cannot see a start main.rs has queued, so a chat app started within one refresh (200 ms)
+// of a GPU switch keeps the queued app waiting until the chat app stops; pass the queue in if that ever bites.
 pub fn start(shared: &Shared, i: usize) {
+    start_one(shared, i);
+    let mut sup = shared.lock().unwrap();
+    let c = match needed_chat(&sup, i) {
+        Some(Ok(c)) => c,
+        Some(Err(why)) => return sup.slots[i].push_log(why),
+        None => return,
+    };
+    let (name, port) = (sup.slots[c].def.name.clone(), sup.slots[c].def.port.expect("validated in config"));
+    drop(sup); // the probe takes up to 200 ms, and start_one locks again
+    if port_open(port) {
+        // A chat server started outside the manager answers already; start_one would mark the tile Failed.
+        return note(shared, i, format!("{name} not started: port {port} answers already (started outside the manager?)"));
+    }
+    start_one(shared, c);
+    let mut sup = shared.lock().unwrap();
+    let line = if sup.slots[c].status.is_on() {
+        format!("started {name} for chat (needs_chat)")
+    } else {
+        format!("{name} did not start: {}", sup.slots[c].error)
+    };
+    sup.slots[i].push_log(line);
+}
+
+/// The chat app to start for app `i`: None when `i` needs none, is not on, or a chat app is on already; Err
+/// when there is no such chat app, it is still stopping, or another GPU app holds the GPU (nothing is stopped
+/// to make room, and nothing is queued).
+fn needed_chat(sup: &Supervisor, i: usize) -> Option<Result<usize, String>> {
+    let want = sup.slots[i].def.needs_chat.as_ref()?;
+    if !sup.slots[i].status.is_on() || sup.slots.iter().any(|s| s.def.chat && s.status.is_on()) {
+        return None;
+    }
+    let Some(target) = sup.slots.iter().position(|s| s.def.id == *want && s.def.chat) else {
+        return Some(Err(format!("needs_chat: no chat app \"{want}\" in apps.toml")));
+    };
+    let name = &sup.slots[target].def.name;
+    if sup.slots[target].status == Status::Stopping {
+        return Some(Err(format!("{name} not started: it is still stopping")));
+    }
+    if sup.slots[target].def.group == Group::Gpu {
+        // Unlike guard::gpu_holder, a GPU app that is still stopping counts: its VRAM is not free yet.
+        let holder = sup.slots.iter().enumerate().find(|&(j, s)| {
+            j != target && s.def.group == Group::Gpu && (s.status.is_on() || s.status == Status::Stopping)
+        });
+        if let Some((_, h)) = holder {
+            let doing = if h.status == Status::Stopping { "is still releasing" } else { "is using" };
+            return Some(Err(format!("{name} not started: {} {doing} the GPU", h.def.name)));
+        }
+    }
+    Some(Ok(target))
+}
+
+fn start_one(shared: &Shared, i: usize) {
     let mut sup = shared.lock().unwrap();
     let slot = &mut sup.slots[i];
     if slot.def.group == Group::App {
@@ -276,5 +332,97 @@ mod tests {
     fn strips_ansi_colors() {
         assert_eq!(strip_ansi("\x1b[32m[INFO]\x1b[0m Starting server"), "[INFO] Starting server");
         assert_eq!(strip_ansi("plain"), "plain");
+    }
+
+    // Slots: 0 qwen (chat), 1 coder (chat), 2 comfy (not chat), 3 odysseus (needs qwen), 4 wiki, 5 api (svc chat),
+    // 6 agent (gpu, needs api), 7 notes (needs a commented-out app).
+    const APPS: &str = "app = [
+        {id='qwen', name='Qwen3.6', group='gpu', chat=true, cmd=['x'], port=1, health='tcp'},
+        {id='coder', name='Coder', group='gpu', chat=true, cmd=['x'], port=2, health='tcp'},
+        {id='comfy', name='ComfyUI', group='gpu', cmd=['x'], port=3, health='tcp'},
+        {id='odysseus', name='Odysseus', group='svc', needs_chat='qwen', cmd=['x'], port=4, health='tcp'},
+        {id='wiki', name='Wikipedia', group='svc', cmd=['x'], port=5, health='tcp'},
+        {id='api', name='API', group='svc', chat=true, cmd=['x'], port=6, health='tcp'},
+        {id='agent', name='Agent', group='gpu', needs_chat='api', cmd=['x'], port=7, health='tcp'},
+        {id='notes', name='Notes', group='svc', needs_chat='gone', cmd=['x'], port=8, health='tcp'},
+    ]";
+
+    /// `needed_chat` for app `id` once the apps named in `on` have the given status.
+    fn needed(id: &str, on: &[(&str, Status)]) -> Option<Result<usize, String>> {
+        let shared = Supervisor::new(crate::config::parse(APPS).unwrap());
+        let mut sup = shared.lock().unwrap();
+        for s in &mut sup.slots {
+            if let Some(&(_, status)) = on.iter().find(|(n, _)| *n == s.def.id) {
+                s.status = status;
+            }
+        }
+        let i = sup.slots.iter().position(|s| s.def.id == id).unwrap();
+        needed_chat(&sup, i)
+    }
+
+    #[test]
+    fn needs_chat_starts_the_chat_app_when_none_is_on() {
+        assert_eq!(needed("odysseus", &[("odysseus", Status::Starting)]), Some(Ok(0)));
+        assert_eq!(needed("odysseus", &[("odysseus", Status::Ready), ("qwen", Status::Failed)]), Some(Ok(0)));
+        // A svc chat app needs no GPU, so the GPU app that asks for it may hold the GPU.
+        assert_eq!(needed("agent", &[("agent", Status::Starting)]), Some(Ok(5)));
+        let why = "needs_chat: no chat app \"gone\" in apps.toml";
+        assert_eq!(needed("notes", &[("notes", Status::Starting)]), Some(Err(why.into())));
+    }
+
+    #[test]
+    fn needs_chat_does_nothing_when_a_chat_app_is_on() {
+        for (chat, status) in [("coder", Status::Ready), ("coder", Status::Starting), ("qwen", Status::Ready)] {
+            assert_eq!(needed("odysseus", &[("odysseus", Status::Starting), (chat, status)]), None, "{chat} {status:?}");
+        }
+    }
+
+    #[test]
+    fn needs_chat_never_takes_the_gpu_from_another_app() {
+        for status in [Status::Ready, Status::Starting] {
+            let why = "Qwen3.6 not started: ComfyUI is using the GPU";
+            assert_eq!(needed("odysseus", &[("odysseus", Status::Starting), ("comfy", status)]), Some(Err(why.into())), "{status:?}");
+        }
+        for holder in ["comfy", "coder"] {
+            let got = needed("odysseus", &[("odysseus", Status::Starting), (holder, Status::Stopping)]);
+            assert!(got.as_ref().is_some_and(|r| r.as_ref().is_err_and(|e| e.ends_with("is still releasing the GPU"))), "{got:?}");
+        }
+        let why = "Qwen3.6 not started: it is still stopping";
+        assert_eq!(needed("odysseus", &[("odysseus", Status::Starting), ("qwen", Status::Stopping)]), Some(Err(why.into())));
+    }
+
+    /// start() with real processes: a chat port that answers already is left alone, and a chat app that fails to
+    /// start is reported in the log of the app that needed it.
+    #[test]
+    fn start_reports_what_happened_to_the_chat_app() {
+        let outside = std::net::TcpListener::bind("127.0.0.1:0").unwrap(); // a chat server started outside
+        let busy = outside.local_addr().unwrap().port();
+        let free = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        let apps = format!(
+            "app = [
+            {{id='chat', name='Chat', group='gpu', chat=true, cmd=['no-such-program-localai'], port={busy}, health='tcp'}},
+            {{id='dep', name='Dep', group='svc', needs_chat='chat', cmd=['ping', '-n', '30', '127.0.0.1'], port={free}, health='tcp'}},
+        ]"
+        );
+        let shared = Supervisor::new(crate::config::parse(&apps).unwrap());
+        let last_log = || shared.lock().unwrap().slots[1].log.back().cloned().unwrap_or_default();
+        start(&shared, 1);
+        assert_eq!(shared.lock().unwrap().slots[1].status, Status::Starting);
+        assert_eq!(shared.lock().unwrap().slots[0].status, Status::Stopped);
+        assert!(last_log().starts_with(&format!("Chat not started: port {busy} answers already")), "{}", last_log());
+        drop(outside);
+        start(&shared, 1); // dep is on already, so only the chat app is tried
+        assert_eq!(shared.lock().unwrap().slots[0].status, Status::Failed);
+        assert!(last_log().starts_with("Chat did not start: start failed:"), "{}", last_log());
+        stop(&shared, 1);
+    }
+
+    #[test]
+    fn needs_chat_only_follows_an_app_that_asks_and_is_on() {
+        for status in [Status::Stopped, Status::Stopping, Status::Failed] {
+            assert_eq!(needed("odysseus", &[("odysseus", status)]), None, "{status:?}");
+        }
+        assert_eq!(needed("wiki", &[("wiki", Status::Starting)]), None);
+        assert_eq!(needed("comfy", &[("comfy", Status::Ready)]), None);
     }
 }
