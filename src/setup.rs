@@ -111,7 +111,7 @@ pub fn run(dir: &Path) -> Result<(), String> {
     let llama = dir.join("llama.cpp");
     let downloads = dir.join("_downloads");
     let model = dir.join("models").join(MODEL.file);
-    // shortcut: an existing llama.cpp folder is trusted as-is; delete it to reinstall a different build.
+    // TODO: an existing llama.cpp folder is trusted as-is; delete it to reinstall a different build.
     let runtime: &[Asset] = if llama.join("llama-server.exe").exists() { &[] } else { pick_backend() };
     // Models already on this PC (LM Studio, D:\AI, ...) make the 22 GB Qwen3.6 download unnecessary;
     // detect.rs adds them to apps.toml when the manager opens. A small test model does not count.

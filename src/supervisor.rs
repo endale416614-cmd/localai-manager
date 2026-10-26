@@ -90,7 +90,7 @@ fn command(def: &AppDef) -> Command {
 
 /// Starts app `i`, and with it the chat app its `needs_chat` names when no chat app is running. What happened to
 /// the chat app goes to the log of app `i`. Called on the UI thread only, so no other start runs in between.
-// shortcut: needed_chat cannot see a start main.rs has queued, so a chat app started within one refresh (200 ms)
+// TODO: needed_chat cannot see a start main.rs has queued, so a chat app started within one refresh (200 ms)
 // of a GPU switch keeps the queued app waiting until the chat app stops; pass the queue in if that ever bites.
 pub fn start(shared: &Shared, i: usize) {
     start_one(shared, i);
